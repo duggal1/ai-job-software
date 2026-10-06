@@ -14,7 +14,6 @@ import { authClient } from "@/lib/auth-client";
  */
 export function SignOutButton() {
   const [isPending, startTransition] = useTransition();
-  const router = useRouter();
 
   return (
     <button
