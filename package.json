@@ -46,7 +46,7 @@
     "unpdf": "^1.8.0",
     "uploadthing": "^7.7.4",
     "ws": "^8.22.0",
-    "zod": "^4.4.3"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
