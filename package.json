@@ -11,7 +11,7 @@
     "generate": "drizzle-kit generate",
     "push": "drizzle-kit push",
     "migrate": "drizzle-kit migrate",
-    "postinstall": "drizzle-kit generate && drizzle-kit push && drizzle-kit migrate"
+    "postinstall": "node scripts/drizzle-postinstall.cjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
