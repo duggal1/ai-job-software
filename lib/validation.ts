@@ -42,4 +42,19 @@ export const jobPostSchema = z.object({
 
 export type JobPostFormData = z.infer<typeof jobPostSchema>;
 
+export const emailSchema = z.object({
+  email: z.email("Enter a valid email"),
+});
+
+export type EmailData = z.infer<typeof emailSchema>;
+
+export const otpSchema = z.object({
+  otp: z
+    .string()
+    .length(6, { error: "Code must be 6 digits", abort: true })
+    .regex(/^\d+$/, { error: "Code must be numbers" }),
+});
+
+export type OtpData = z.infer<typeof otpSchema>;
+
 export { EMPLOYMENT_TYPES, WORK_MODES, JOB_CATEGORIES };

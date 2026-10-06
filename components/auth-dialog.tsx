@@ -16,6 +16,7 @@ import {
   OTPFieldInput,
   OTPFieldSeparator,
 } from "@/components/ui/otp-field";
+import { emailSchema, otpSchema } from "@/lib/validation";
 
 interface AuthDialogProps {
   onOpenChange?: (open: boolean) => void;
@@ -36,7 +37,7 @@ export function AuthDialog({ open, onOpenChange, onAuthenticated }: AuthDialogPr
   const [otpValue, setOtpValue] = useState("");
 
   function isValidEmail(value: string): boolean {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+    return emailSchema.safeParse({ email: value }).success;
   }
 
   async function handleSendOtp() {
@@ -67,7 +68,11 @@ export function AuthDialog({ open, onOpenChange, onAuthenticated }: AuthDialogPr
   }
 
   async function handleVerifyOtp(otp: string) {
-    if (otp.length !== OTP_LENGTH) return;
+    const parsed = otpSchema.safeParse({ otp });
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message ?? "Invalid code");
+      return;
+    }
     setOtpValue(otp);
     setIsLoading(true);
     setError("");
