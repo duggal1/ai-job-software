@@ -52,6 +52,7 @@ export function AuthDialog({ open, onOpenChange, onAuthenticated }: AuthDialogPr
       const res = await fetch("/api/auth/email-otp/send-verification-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include", // session cookie must travel with the request
         body: JSON.stringify({ email: trimmed, type: "sign-in" }),
       });
       const body = await res.json();
@@ -74,14 +75,15 @@ export function AuthDialog({ open, onOpenChange, onAuthenticated }: AuthDialogPr
       return;
     }
     setOtpValue(otp);
-    setIsLoading(true);
-    setError("");
-    try {
-      const res = await fetch("/api/auth/sign-in/email-otp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), otp }),
-      });
+setIsLoading(true);
+      setError("");
+      try {
+        const res = await fetch("/api/auth/sign-in/email-otp", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include", // session cookie must travel with the request
+          body: JSON.stringify({ email: email.trim(), otp }),
+        });
       const body = await res.json();
       if (!res.ok || body.error) {
         setError(body.error?.message ?? "Wrong code");

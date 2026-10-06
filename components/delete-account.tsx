@@ -3,6 +3,13 @@
 import { useState, useTransition } from "react";
 import { authClient } from "@/lib/auth-client";
 
+/**
+ * Optimistic delete-account:
+ *  - `deleteUser` revokes the session, runs our `beforeDelete` hook (which
+ *    cascades company → job posts → applicants → company row), and clears the
+ *    session cookies server-side.
+ *  - On success we hard-navigate so the next server render sees no session.
+ */
 export function DeleteAccount() {
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState("");
@@ -12,7 +19,11 @@ export function DeleteAccount() {
     setError("");
     startTransition(async () => {
       try {
-        await authClient.deleteUser();
+        const res = await authClient.deleteUser();
+        if (res.error) {
+          setError(res.error.message ?? "Could not delete your account.");
+          return;
+        }
         window.location.href = "/";
       } catch {
         setError("Could not delete your account. Please try again.");
@@ -41,7 +52,7 @@ export function DeleteAccount() {
             type="button"
             disabled={isPending}
             onClick={handleDelete}
-            className="cursor-pointer rounded-lg bg-stone-900 px-4 py-1 text-[13px] font-normal text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15),inset_0_-1px_0_rgba(0,0,0,0.12)] hover:bg-stone-950 disabled:opacity-60"
+            className="cursor-pointer rounded-lg bg-stone-900 px-4 py-1 text-[13px] font-normal text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15),inset_0_-1px_0_rgba(0,0,0,0.12)] transition-all hover:bg-stone-950 disabled:opacity-60"
           >
             {isPending ? "Deleting…" : "Yes, delete everything"}
           </button>

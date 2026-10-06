@@ -49,7 +49,7 @@ export default function Page() {
         <SearchInput placeholder="Search any role, skill, or company…" />
         <button
           type="submit"
-          className="h-10 w-fit cursor-pointer rounded-lg bg-stone-900 px-3 py-0.5 text-[13px] font-normal text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15),inset_0_-1px_0_rgba(0,0,0,0.12)] hover:bg-stone-950"
+          className="h-10 w-fit shrink-0 cursor-pointer rounded-lg bg-stone-900 px-3 py-0.5 text-[13px] font-normal text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15),inset_0_-1px_0_rgba(0,0,0,0.12)] hover:bg-stone-950"
         >
           Search
         </button>
