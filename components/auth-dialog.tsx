@@ -17,6 +17,7 @@ import {
   OTPFieldSeparator,
 } from "@/components/ui/otp-field";
 import { emailSchema, otpSchema } from "@/lib/validation";
+import { authClient } from "@/lib/auth-client";
 
 interface AuthDialogProps {
   onOpenChange?: (open: boolean) => void;
@@ -49,15 +50,14 @@ export function AuthDialog({ open, onOpenChange, onAuthenticated }: AuthDialogPr
     setError("");
     setIsLoading(true);
     try {
-      const res = await fetch("/api/auth/email-otp/send-verification-otp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include", // session cookie must travel with the request
-        body: JSON.stringify({ email: trimmed, type: "sign-in" }),
+      // Use the Better Auth client (not raw fetch) so endpoint atom signals
+      // fire and `useSession` refetches everywhere (navbar, hero, etc).
+      const { error } = await authClient.emailOtp.sendVerificationOtp({
+        email: trimmed,
+        type: "sign-in",
       });
-      const body = await res.json();
-      if (!res.ok) {
-        setError(body.error?.message ?? body.message ?? "Failed to send code");
+      if (error) {
+        setError(error.message ?? "Failed to send code");
         return;
       }
       setStep("otp");
@@ -78,15 +78,24 @@ export function AuthDialog({ open, onOpenChange, onAuthenticated }: AuthDialogPr
 setIsLoading(true);
       setError("");
       try {
-        const res = await fetch("/api/auth/sign-in/email-otp", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include", // session cookie must travel with the request
-          body: JSON.stringify({ email: email.trim(), otp }),
-        });
-      const body = await res.json();
-      if (!res.ok || body.error) {
-        setError(body.error?.message ?? "Wrong code");
+        // `signIn.emailOtp` triggers the email-otp plugin's `$sessionSignal`,
+        // so every `useSession` hook re-renders with the new session
+        // immediately — no stale logged-out navbar.
+        const { error } = await authClient.signIn.emailOtp(
+          {
+            email: email.trim(),
+            otp,
+          },
+          {
+            onSuccess: async () => {
+              // Belt-and-braces: force the session atom to refetch now so the
+              // navbar flips to Dashboard/Applicants before navigation.
+              await authClient.getSession({ query: { disableCookieCache: true } });
+            },
+          },
+        );
+      if (error) {
+        setError(error.message ?? "Wrong code");
         return;
       }
       onAuthenticated?.();

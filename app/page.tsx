@@ -1,24 +1,15 @@
 import Link from "next/link";
-import { Suspense } from "react";
 import { getLatestJobs } from "@/lib/actions/get-latest-jobs";
-import { JobCard } from "@/components/job-card";
-import { JobsListSkeleton } from "@/components/jobs-list-skeleton";
+import { LatestJobsList } from "@/components/latest-jobs-list";
 import { SearchInput } from "@/components/search-input";
 
-async function LatestJobs() {
-  const jobs = await getLatestJobs();
-  return (
-    <div className="mt-5 flex flex-col gap-3">
-      {jobs.map((job) => (
-        <JobCard key={job.id} job={job} />
-      ))}
-      {jobs.length === 0 && (
-        <p className="py-8 text-center text-[13px] text-stone-400">No job posts yet.</p>
-      )}
-    </div>
-  );
-}
-
+/**
+ * NEVER statically prerender this page. A static `/` bakes in whatever the
+ * DB held at build time (empty) and serves it forever — the exact "landing
+ * shows zero jobs while /jobs works" outage. `force-dynamic` renders per
+ * request, and the TanStack list below refetches on mount as a second net.
+ */
+export const dynamic = "force-dynamic";
 
 type PopularFilter = { label: string; href: string; icon: "flag" | "tag" | "dot"; prefix?: string };
 
@@ -35,7 +26,11 @@ const POPULAR_FILTERS: PopularFilter[] = [
   { label: "Staff", href: "/jobs?experience=staff", icon: "tag" },
 ];
 
-export default function Page() {
+export default async function Page() {
+  // SSR first paint; TanStack Query takes over on the client with this as
+  // `initialData`, then stays fresh (10s staleTime + invalidate on post).
+  const initialJobs = await getLatestJobs();
+
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col px-6 pb-24 pt-[10vh]">
       <h1 className="max-w-2xl text-4xl font-normal leading-[1.05] tracking-tighter text-stone-900 antialiased sm:text-5xl">
@@ -79,9 +74,7 @@ export default function Page() {
           View all
         </Link>
       </div>
-      <Suspense fallback={<JobsListSkeleton />}>
-        <LatestJobs />
-      </Suspense>
+      <LatestJobsList initialData={initialJobs} />
     </main>
   );
 }

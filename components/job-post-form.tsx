@@ -18,6 +18,8 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { MarkdownEditor } from "@/components/markdown-editor";
 import { LogoUpload } from "@/components/logo-upload";
 import { saveJob } from "@/lib/actions/save-job";
+import { jobsKeys } from "@/lib/queries/jobs";
+import type { JobCardData } from "@/components/job-card";
 import { slugify } from "@/lib/slug";
 import { jobPostSchema, EMPLOYMENT_TYPES, WORK_MODES, JOB_CATEGORIES } from "@/lib/validation";
 import { EXPERIENCE_LEVELS } from "@/lib/experience";
@@ -46,22 +48,39 @@ export function JobPostForm({ companyId: companyIdProp }: { companyId: string })
   const saveMutation = useMutation({
     mutationFn: ({ company, jobPost }: { company: Company; jobPost: JobPost }) =>
       saveJob({ company, jobPost }),
-    onMutate: async ({ company, jobPost }) => {
-      await queryClient.cancelQueries({ queryKey: ["companies"] });
-      await queryClient.cancelQueries({ queryKey: ["jobPosts"] });
-      const prevCompanies = queryClient.getQueryData<Company[]>(["companies"]);
-      const prevJobPosts = queryClient.getQueryData<JobPost[]>(["jobPosts"]);
-      queryClient.setQueryData<Company[]>(["companies"], (old) => [...(old ?? []), company]);
-      queryClient.setQueryData<JobPost[]>(["jobPosts"], (old) => [...(old ?? []), jobPost]);
-      return { prevCompanies, prevJobPosts };
+    onMutate: async ({ jobPost }) => {
+      // Cancel outgoing refetches so the optimistic row isn't overwritten.
+      await queryClient.cancelQueries({ queryKey: jobsKeys.all });
+      const prevLatest = queryClient.getQueryData<JobCardData[]>(jobsKeys.latest());
+      // Instant optimistic row — newest-first, real timestamp, matches
+      // JobCard shape exactly so `/` renders it before the server responds.
+      const optimisticJob: JobCardData = {
+        id: jobPost.id,
+        companySlug: jobPost.companySlug,
+        companyName: jobPost.companyName,
+        jobTitle: jobPost.jobTitle,
+        descriptionMarkdown: jobPost.descriptionMarkdown,
+        estimatedSalary: jobPost.estimatedSalary,
+        workMode: jobPost.workMode,
+        employmentType: jobPost.employmentType,
+        location: jobPost.location,
+        yearsOfExperience: jobPost.yearsOfExperience ?? null,
+        skills: jobPost.skills.join(","),
+        createdAt: new Date(jobPost.createdAt),
+        logoUrl: logoUrl ?? null,
+      };
+      queryClient.setQueryData<JobCardData[]>(jobsKeys.latest(), (old) =>
+        [optimisticJob, ...(old ?? [])].slice(0, 20),
+      );
+      return { prevLatest };
     },
     onError: (_err, _vars, ctx) => {
-      if (ctx?.prevCompanies) queryClient.setQueryData(["companies"], ctx.prevCompanies);
-      if (ctx?.prevJobPosts) queryClient.setQueryData(["jobPosts"], ctx.prevJobPosts);
+      if (ctx?.prevLatest) queryClient.setQueryData(jobsKeys.latest(), ctx.prevLatest);
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["companies"] });
-      queryClient.invalidateQueries({ queryKey: ["jobPosts"] });
+      // Refetch immediately — `/` and `/jobs` show the real row with the
+      // server timestamp, newest first. No 30s wait, no manual nav needed.
+      queryClient.invalidateQueries({ queryKey: jobsKeys.all });
     },
   });
 
@@ -155,8 +174,15 @@ export function JobPostForm({ companyId: companyIdProp }: { companyId: string })
 
       startTransition(async () => {
         setOptimisticStatus("publishing");
-        await saveMutation.mutateAsync({ company, jobPost });
+        try {
+          await saveMutation.mutateAsync({ company, jobPost });
+          // RSC + TanStack are both fresh now; go to the new post.
+          // `/` already has the optimistic row and refetches in background.
+          router.refresh();
           router.push(`/company/${jobPostId}/${companySlug}`);
+        } catch {
+          setOptimisticStatus("idle");
+        }
       });
     },
   });

@@ -3,6 +3,7 @@
 import { getDb } from "@/lib/db";
 import { bust } from "@/lib/db/memo";
 import { headers } from "next/headers";
+import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { companies, jobPosts } from "@/lib/db/schema";
@@ -53,4 +54,10 @@ export async function saveJob({ company, jobPost }: { company: Company; jobPost:
   bust("jobs:");
   bust("career:");
   bust("job:");
+  // Push the fresh row to every RSC payload NOW — without this, `/` keeps
+  // serving the stale prerender until the 30s memo TTL lapses (the exact
+  // "only shows after visiting /jobs" bug).
+  revalidatePath("/", "page");
+  revalidatePath("/jobs", "page");
+  return { id: jobPostId, slug: jobPost.companySlug };
 }

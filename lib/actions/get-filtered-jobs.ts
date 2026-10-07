@@ -10,7 +10,7 @@ export interface JobFilters {
 
 export async function getFilteredJobs(filters: JobFilters) {
   const key = `jobs:${filters.q ?? ""}|${filters.country ?? ""}|${filters.experience ?? ""}|${filters.skill ?? ""}`;
-  return memo(key, 30000, async () => {
+  return memo(key, 10000, async () => {
     const rows = await getPreparedQueries().filteredJobs.execute({
       q: filters.q ?? "",
       country: filters.country ?? "",

@@ -18,7 +18,7 @@ export interface JobCardData {
   location: string;
   yearsOfExperience?: string | null;
   skills?: string;
-  createdAt: Date;
+  createdAt: Date | string;
   logoUrl?: string | null;
 }
 
@@ -49,7 +49,7 @@ export function JobCard({ job }: { job: JobCardData }) {
         )}
         <span className="text-[13px] text-stone-500">{job.companyName}</span>
         {country && <span className="text-[13px]">{country.flag}</span>}
-        <span className="ml-auto text-[12px] text-stone-400" suppressHydrationWarning>{timeAgo(job.createdAt)}</span>
+        <span className="ml-auto text-[12px] text-stone-400" suppressHydrationWarning>{timeAgo(job.createdAt instanceof Date ? job.createdAt : new Date(job.createdAt))}</span>
       </div>
       <div className="flex items-center justify-between gap-4">
         <h3 className="text-[15px] font-normal text-stone-900">{job.jobTitle}</h3>

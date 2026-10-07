@@ -9,7 +9,7 @@ import { getCareerUrl } from "@/lib/actions/get-career-url";
 
 export function Hero() {
   const [authOpen, setAuthOpen] = useState(false);
-  const { data: session } = authClient.useSession();
+  const { data: session, isPending } = authClient.useSession();
 
   const goToDashboard = useCallback(() => {
     getCareerUrl().then((url) => {
@@ -40,7 +40,12 @@ export function Hero() {
         and attract the right people.
       </motion.p>
       <motion.div variants={item} className="mt-8">
-        {session ? (
+        {isPending ? (
+          <span
+            className="inline-block h-9 w-44 animate-pulse rounded-lg bg-stone-200/70"
+            aria-label="Checking sign-in status"
+          />
+        ) : session ? (
           <button
             onClick={goToDashboard}
             className="cursor-pointer rounded-lg bg-stone-900 px-8 py-1.5 text-[15px] font-normal text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15),inset_0_-1px_0_rgba(0,0,0,0.12)] transition-all hover:underline hover:underline-offset-2"
