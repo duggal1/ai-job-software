@@ -1,13 +1,17 @@
 "use server";
 
-import { getDb } from "@/lib/db";
+import { getDb, getHttpDb } from "@/lib/db";
 import { bust } from "@/lib/db/memo";
+import { publishRealtime } from "@/lib/realtime/bus";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { companies, jobPosts } from "@/lib/db/schema";
 import type { Company, JobPost } from "@/lib/types";
+import { embedText } from "@/lib/embeddings";
+import { upsertJobVector, buildJobText } from "@/lib/pinecone";
 
 export async function saveJob({ company, jobPost }: { company: Company; jobPost: JobPost }) {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -19,16 +23,19 @@ export async function saveJob({ company, jobPost }: { company: Company; jobPost:
   const jobPostId = jobPost.id;
   jobPost = { ...jobPost, companyId };
 
-  await db.transaction(async (tx) => {
-    await tx.insert(companies).values({
+  // Neon's HTTP `batch` runs every statement in one transaction on one round
+  // trip — the company row and its first job post commit together.
+  const batchDb = getHttpDb();
+  await batchDb.batch([
+    batchDb.insert(companies).values({
       id: companyId,
       slug: company.slug,
       name: company.name,
       domain: company.domain,
       logoUrl: company.logoUrl ?? null,
       createdAt: new Date(company.createdAt),
-    }).onConflictDoNothing({ target: companies.id });
-    await tx.insert(jobPosts).values({
+    }).onConflictDoNothing({ target: companies.id }),
+    batchDb.insert(jobPosts).values({
       id: jobPostId,
       companyId: jobPost.companyId,
       companyName: jobPost.companyName,
@@ -48,8 +55,8 @@ export async function saveJob({ company, jobPost }: { company: Company; jobPost:
       applyMode: jobPost.applyMode,
       applyUrl: jobPost.applyUrl ?? null,
       createdAt: new Date(jobPost.createdAt),
-    });
-  });
+    }),
+  ]);
   bust("latestJobs");
   bust("jobs:");
   bust("career:");
@@ -59,5 +66,24 @@ export async function saveJob({ company, jobPost }: { company: Company; jobPost:
   // "only shows after visiting /jobs" bug).
   revalidatePath("/", "page");
   revalidatePath("/jobs", "page");
+  // Wake every open tab: TanStack Query refetches the feeds instantly.
+  publishRealtime({ type: "jobs", jobPostId });
+
+  // Index the new job post in Pinecone for semantic search. Runs after the
+  // response is sent so saving stays fast; failures are logged, not thrown.
+  after(async () => {
+    try {
+      const vector = await embedText(buildJobText(jobPost));
+      await upsertJobVector(jobPostId, vector, {
+        jobTitle: jobPost.jobTitle,
+        companyName: jobPost.companyName,
+        companySlug: jobPost.companySlug,
+        location: jobPost.location,
+      });
+    } catch (error) {
+      console.error("[pinecone] failed to index job", jobPostId, error);
+    }
+  });
+
   return { id: jobPostId, slug: jobPost.companySlug };
 }

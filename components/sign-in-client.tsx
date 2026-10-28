@@ -18,7 +18,7 @@ export function SignInClient() {
           if (!open) router.push("/");
         }}
         onAuthenticated={() => {
-          window.location.href = "/job-post/new";
+          window.location.href = "/onboarding";
         }}
       />
     </main>

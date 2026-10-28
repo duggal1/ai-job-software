@@ -2,7 +2,6 @@
 
 import { useFilteredJobs, type JobFilterParams } from "@/lib/queries/jobs";
 import { JobCard, type JobCardData } from "@/components/job-card";
-import { JobsListSkeleton } from "@/components/jobs-list-skeleton";
 
 interface FilteredJobsListProps {
   filters: JobFilterParams;
@@ -14,12 +13,10 @@ interface FilteredJobsListProps {
  * independently and refetches the moment a filter changes.
  */
 export function FilteredJobsList({ filters, initialData }: FilteredJobsListProps) {
-  const { data: jobs, isPending, isFetching, isError, refetch } = useFilteredJobs(
+  const { data: jobs, isFetching, isError, refetch } = useFilteredJobs(
     filters,
     initialData,
   );
-
-  if (isPending) return <JobsListSkeleton count={6} />;
 
   if (isError) {
     return (

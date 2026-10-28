@@ -11,17 +11,22 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CheckmarkCircle02Icon, AlertCircleIcon, Upload01Icon } from "hugeicons-react";
 import { saveApplicant } from "@/lib/actions/save-applicant";
-import { getJobPost } from "@/lib/actions/get-job-post";
-import { getCompany } from "@/lib/actions/get-company";
 import { applyFormSchema } from "@/lib/validation";
 import { slugify } from "@/lib/slug";
 import { parseResume } from "@/lib/actions/parse-resume";
 import { generateNote } from "@/lib/actions/generate-note";
 import { useUploadThing } from "@/lib/uploadthing";
+import { applicantKeys } from "@/lib/queries/applicants";
 import type { ApplyFormData } from "@/lib/validation";
 import type { JobPost, Applicant } from "@/lib/types";
 
-export function TalentForm() {
+export function TalentForm({
+  jobPost,
+  companyLogoUrl,
+}: {
+  jobPost: JobPost | null;
+  companyLogoUrl: string | null;
+}) {
   const { id } = useParams<{ id: string; slug: string }>();
   const queryClient = useQueryClient();
   const [isPending, startTransition] = useTransition();
@@ -31,8 +36,6 @@ export function TalentForm() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [fullNameValue, setFullNameValue] = useState("");
   const [alert, setAlert] = useState<{ variant: "success" | "error"; message: string } | null>(null);
-  const [jobPost, setJobPost] = useState<JobPost | null>(null);
-  const [companyLogoUrl, setCompanyLogoUrl] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState<{ email: string } | null>(null);
   const [optimisticSubmitted, setOptimisticSubmitted] = useOptimistic(submitted);
   const previousSlugRef = useRef("");
@@ -41,28 +44,12 @@ export function TalentForm() {
     mutationFn: async (applicant: Applicant) => {
       await saveApplicant(applicant);
     },
-    onMutate: async (applicant) => {
-      await queryClient.cancelQueries({ queryKey: ["applicants", id] });
-      const prev = queryClient.getQueryData<Applicant[]>(["applicants", id]);
-      queryClient.setQueryData<Applicant[]>(["applicants", id], (old) => [...(old ?? []), applicant]);
-      return { prev };
-    },
-    onError: (_err, _vars, ctx) => {
-      if (ctx?.prev) queryClient.setQueryData(["applicants", id], ctx.prev);
-    },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["applicants", id] });
+      // The recipient's feed is pushed by SSE; this also covers the tab that
+      // submitted in case its connection was dropped.
+      void queryClient.invalidateQueries({ queryKey: applicantKeys.all });
     },
   });
-
-  useEffect(() => {
-    getJobPost(id).then((p) => {
-      setJobPost(p ?? null);
-      if (p) {
-        getCompany(p.companyId).then((c) => setCompanyLogoUrl(c?.logoUrl ?? null));
-      }
-    });
-  }, [id]);
 
   const defaultValues: ApplyFormData = {
     fullName: "",
@@ -138,7 +125,9 @@ export function TalentForm() {
       setResumeFileName(file.name);
       setIsParsing(true);
       setAlert(null);
-      startUpload([file]);
+      // Upload and parse in parallel. The PDF is the source of truth for the
+      // recipient; the parsed fields fill the form.
+      const uploadPromise = startUpload([file]).catch(() => undefined);
       try {
         const buffer = await file.arrayBuffer();
         const bytes = new Uint8Array(buffer);
@@ -159,7 +148,17 @@ export function TalentForm() {
         if (parsed.recentProjectUrls) form.setFieldValue("recentProjectUrls", parsed.recentProjectUrls);
         if (parsed.linkedinUrl) form.setFieldValue("linkedinUrl", parsed.linkedinUrl);
         if (parsed.githubUrl) form.setFieldValue("githubUrl", parsed.githubUrl);
-        setAlert({ variant: "success", message: "Resume parsed successfully." });
+
+        const uploaded = await uploadPromise;
+        const uploadedUrl = uploaded?.[0]?.ufsUrl;
+        if (uploadedUrl) setResumeUrl(uploadedUrl);
+
+        setAlert({
+          variant: "success",
+          message: uploadedUrl
+            ? "Resume parsed and attached."
+            : "Resume parsed. It will be attached when you submit.",
+        });
         setIsParsing(false);
 
         const noteResult = await generateNote({
@@ -174,8 +173,16 @@ export function TalentForm() {
           form.setFieldValue("recentProjectUrls", noteResult.recentProjectUrls);
         }
       } catch {
+        const uploaded = await uploadPromise;
+        const uploadedUrl = uploaded?.[0]?.ufsUrl;
+        if (uploadedUrl) setResumeUrl(uploadedUrl);
         setIsParsing(false);
-        setAlert({ variant: "error", message: "Could not parse resume. Please try again." });
+        setAlert({
+          variant: "error",
+          message: uploadedUrl
+            ? "Resume attached, but we could not read it. Fill the fields manually."
+            : "Could not parse resume. Please try again.",
+        });
       }
     },
     [form, jobPost, startUpload],
@@ -478,7 +485,7 @@ export function TalentForm() {
           {([canSubmit]) => (
             <Button
               type="submit"
-              disabled={!canSubmit || isPending}
+              disabled={!canSubmit || isPending || isParsing || saveMutation.isPending}
               className="w-fit cursor-pointer rounded-lg bg-stone-900 px-6 py-1.5 text-[14px] font-normal text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15),inset_0_-1px_0_rgba(0,0,0,0.12)] hover:bg-stone-950 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isPending ? "Submitting…" : "Submit application"}

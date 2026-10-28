@@ -1,5 +1,6 @@
-export function timeAgo(date: Date | string): string {
-  const d = date instanceof Date ? date : new Date(date);
+export function timeAgo(date: Date | string | number): string {
+  const d =
+    date instanceof Date ? date : new Date(date);
   if (Number.isNaN(d.getTime())) return "";
   const now = Date.now();
   const diff = now - d.getTime();

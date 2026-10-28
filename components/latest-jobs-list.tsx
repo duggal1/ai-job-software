@@ -2,7 +2,6 @@
 
 import { useLatestJobs } from "@/lib/queries/jobs";
 import { JobCard, type JobCardData } from "@/components/job-card";
-import { JobsListSkeleton } from "@/components/jobs-list-skeleton";
 
 /**
  * `/` recent posts — TanStack Query with SSR `initialData`.
@@ -11,9 +10,9 @@ import { JobsListSkeleton } from "@/components/jobs-list-skeleton";
  * - New posts appear via `["jobs"]` invalidation the moment `saveJob` lands.
  */
 export function LatestJobsList({ initialData }: { initialData: JobCardData[] }) {
-  const { data: jobs, isPending, isFetching, isError, refetch } = useLatestJobs(initialData);
-
-  if (isPending) return <JobsListSkeleton />;
+  // Suspense: the page shell streams immediately and this boundary is filled
+  // by the nearest <Suspense fallback>. Data is always defined here.
+  const { data: jobs, isFetching, isError, refetch } = useLatestJobs(initialData);
 
   if (isError) {
     return (

@@ -1,5 +1,5 @@
 export function buildApplicantDays(
-  applicants: Array<{ createdAt: Date }>,
+  applicants: Array<{ createdAt: Date | number | string }>,
   days = 14,
 ): Array<{ day: string; count: number }> {
   const DAY = 24 * 60 * 60 * 1000;

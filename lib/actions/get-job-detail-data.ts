@@ -32,7 +32,7 @@ export interface JobDetailData {
 }
 
 export async function getJobDetailData(postId: string): Promise<JobDetailData> {
-  return memo(`job:${postId}`, 30000, async () => {
+  return memo(`job:${postId}`, 5000, async () => {
   const [result] = await getPreparedQueries().jobDetailByPostId.execute({ postId });
   const post = result?.post ?? null;
 

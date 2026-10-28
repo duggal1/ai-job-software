@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { getMyCompany } from "@/lib/actions/company";
 import { JobPostForm } from "@/components/job-post-form";
 
 export default async function JobPostNewPage() {
@@ -8,6 +9,11 @@ export default async function JobPostNewPage() {
 
   if (!session) {
     redirect("/sign-in");
+  }
+
+  const company = await getMyCompany(session);
+  if (!company?.onboardedAt) {
+    redirect("/onboarding");
   }
 
   return (

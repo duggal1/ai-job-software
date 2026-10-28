@@ -1,33 +1,48 @@
 "use server";
 
 import { headers } from "next/headers";
-import { count, eq, inArray } from "drizzle-orm";
+import { and, count, eq, inArray } from "drizzle-orm";
 import { auth } from "@/lib/auth";
-import { getDb } from "@/lib/db";
+import { getDb, getHttpDb } from "@/lib/db";
 import { bust } from "@/lib/db/memo";
+import { publishRealtime } from "@/lib/realtime/bus";
 import { applicants, companies, jobPosts } from "@/lib/db/schema";
 import { slugify } from "@/lib/slug";
 
 export async function getMyCompany(session: NonNullable<
   Awaited<ReturnType<typeof auth.api.getSession>>
 >) {
-  const db = getDb();
-  const [company] = await db
-    .select()
-    .from(companies)
-    .where(eq(companies.id, session.user.id))
-    .limit(1);
+  const batchDb = getHttpDb();
+  // One Neon HTTP batch = one transaction, one round trip.
+  const [companyRows, countRows] = await batchDb.batch([
+    batchDb
+      .select()
+      .from(companies)
+      .where(eq(companies.id, session.user.id))
+      .limit(1),
+    batchDb
+      .select({ value: count() })
+      .from(jobPosts)
+      .where(
+        and(
+          eq(jobPosts.companyId, session.user.id),
+          eq(jobPosts.archived, false),
+        ),
+      ),
+  ]);
+  const company = companyRows[0];
   if (!company) return null;
-  const [countRow] = await db
-    .select({ value: count() })
-    .from(jobPosts)
-    .where(eq(jobPosts.companyId, session.user.id));
+  const countRow = countRows[0];
   return {
     id: company.id,
     slug: company.slug,
     name: company.name,
     domain: company.domain,
     logoUrl: company.logoUrl,
+    employeeCount: company.employeeCount,
+    industry: company.industry,
+    talentNeeds: company.talentNeeds,
+    onboardedAt: company.onboardedAt,
     createdAt: company.createdAt,
     openPosts: countRow?.value ?? 0,
   };
@@ -78,6 +93,7 @@ export async function updateCompany({
   bust("jobs:");
   bust("career:");
   bust("job:");
+  publishRealtime({ type: "jobs" });
 }
 
 export async function createCompany({ name, domain }: { name: string; domain: string }) {
@@ -112,6 +128,7 @@ export async function createCompany({ name, domain }: { name: string; domain: st
   bust("jobs:");
   bust("career:");
   bust("job:");
+  publishRealtime({ type: "jobs" });
   const [row] = await db
     .select()
     .from(companies)
@@ -124,6 +141,10 @@ export async function createCompany({ name, domain }: { name: string; domain: st
     name: row.name,
     domain: row.domain,
     logoUrl: row.logoUrl,
+    employeeCount: row.employeeCount,
+    industry: row.industry,
+    talentNeeds: row.talentNeeds,
+    onboardedAt: row.onboardedAt,
     createdAt: row.createdAt,
     openPosts: 0,
   };
@@ -149,4 +170,5 @@ export async function deleteCompany() {
   bust("jobs:");
   bust("career:");
   bust("job:");
+  publishRealtime({ type: "jobs" });
 }

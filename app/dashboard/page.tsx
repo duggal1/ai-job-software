@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import * as z from "zod";
@@ -9,12 +10,16 @@ import { SessionsTable, type SessionEntry } from "@/components/sessions-table";
 import { ActivityTable, type ActivityEntry } from "@/components/activity-table";
 import { SignOutButton } from "@/components/sign-out-button";
 import { DeleteAccount } from "@/components/delete-account";
-import { DashboardTabs } from "@/components/dashboard-tabs";
+import { DashboardTabs, type DashboardTab } from "@/components/dashboard-tabs";
+import { PostsCrm } from "@/components/posts-crm";
 import { CompanySettings } from "@/components/company-settings";
 import { getMyCompany } from "@/lib/actions/company";
+import { getJobPostsByCompany } from "@/lib/actions/get-company-job-posts";
 import { timeAgo } from "@/lib/time-ago";
 
 export const metadata = { title: "Dashboard" };
+
+type Session = NonNullable<Awaited<ReturnType<typeof auth.api.getSession>>>;
 
 /** Live session rows, validated — unknown shapes never reach the UI. */
 const SessionRowSchema = z
@@ -27,15 +32,14 @@ const SessionRowSchema = z
   })
   .passthrough();
 
-async function readSessions(session: NonNullable<
-  Awaited<ReturnType<typeof auth.api.getSession>>
->): Promise<{ sessions: SessionEntry[]; failed: boolean }> {
+async function readSessions(session: Session): Promise<{ sessions: SessionEntry[]; failed: boolean }> {
   try {
+    const hdrs = await headers();
     const [listRes, live] = await Promise.all([
-      auth.api.listSessions({ headers: await headers() }).catch(() => null),
+      auth.api.listSessions({ headers: hdrs }).catch(() => null),
       (async () => {
         try {
-          return getClientInfo(await headers());
+          return getClientInfo(hdrs);
         } catch {
           return null;
         }
@@ -112,23 +116,32 @@ async function readSessions(session: NonNullable<
   }
 }
 
-export default async function DashboardPage() {
-  const hdrs = await headers();
-  const session = await auth.api.getSession({ headers: hdrs });
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string | string[] }>;
+}) {
+  // Auth is the only thing that gates the shell. Sessions and company data
+  // stream in behind Suspense below, so the page paints immediately.
+  const session = await auth.api.getSession({ headers: await headers() });
   if (!session?.user) redirect("/sign-in");
   const user = session.user;
 
-  const [{ sessions, failed }, company] = await Promise.all([
-    readSessions(session),
-    getMyCompany(session),
-  ]);
+  // Onboarding is mandatory before the dashboard is useful.
+  const company = await getMyCompany(session);
+  if (!company?.onboardedAt) redirect("/onboarding");
 
-  const activity: ActivityEntry[] = sessions.map((s) => ({
-    id: s.id,
-    label: "Signed in",
-    detail: `${s.title}${s.ip ? ` · ${s.ip}` : ""}`,
-    at: s.seenAt ?? "—",
-  }));
+  const params = await searchParams;
+  const tabParam =
+    typeof params.tab === "string" ? params.tab.toLowerCase() : "";
+  const initialTab: DashboardTab =
+    tabParam === "company"
+      ? "Company"
+      : tabParam === "posts"
+        ? "Posts"
+        : tabParam === "sessions"
+          ? "Sessions"
+          : "Account";
 
   return (
     <main className="mx-auto w-full max-w-xl px-6 py-16">
@@ -138,6 +151,7 @@ export default async function DashboardPage() {
       </p>
 
       <DashboardTabs
+        initialTab={initialTab}
         account={
           <>
             <section aria-label="Profile" className="rounded-lg border border-stone-100 bg-stone-50 px-6 py-5">
@@ -148,22 +162,22 @@ export default async function DashboardPage() {
             </section>
 
             <section aria-label="Security and privacy" className="mt-3 rounded-lg border border-stone-100 bg-stone-50 px-6 py-5">
-        <h2 className="text-[15px] font-normal text-stone-900">Security and privacy</h2>
-        <ul className="mt-4 flex flex-col">
-          {[
-            "One-time email codes are required before a sign-in session is created.",
-            "Device and network data is read from sign-in headers to prevent abuse.",
-            "IP addresses are partially hidden in this dashboard. Full addresses are never sent to your browser.",
-            "Verification codes are stored as hashes. Session data lives in your own database.",
-          ].map((line) => (
-            <li
-              key={line}
-              className="border-t border-stone-200/50 py-3 text-[13px] leading-5 text-stone-500 first:border-t-0 first:pt-1 last:pb-0"
-            >
-              {line}
-            </li>
-          ))}
-            </ul>
+              <h2 className="text-[15px] font-normal text-stone-900">Security and privacy</h2>
+              <ul className="mt-4 flex flex-col">
+                {[
+                  "One-time email codes are required before a sign-in session is created.",
+                  "Device and network data is read from sign-in headers to prevent abuse.",
+                  "IP addresses are partially hidden in this dashboard. Full addresses are never sent to your browser.",
+                  "Verification codes are stored as hashes. Session data lives in your own database.",
+                ].map((line) => (
+                  <li
+                    key={line}
+                    className="border-t border-stone-200/50 py-3 text-[13px] leading-5 text-stone-500 first:border-t-0 first:pt-1 last:pb-0"
+                  >
+                    {line}
+                  </li>
+                ))}
+              </ul>
             </section>
 
             <section aria-label="Sign out" className="mt-3 rounded-lg border border-stone-100 bg-stone-50 px-6 py-5">
@@ -179,14 +193,77 @@ export default async function DashboardPage() {
             <DeleteAccount />
           </>
         }
-        company={<CompanySettings initial={company} />}
+        company={
+          <CompanyTab company={company} />
+        }
+        posts={
+          <Suspense fallback={<PanelSkeleton rows={4} />}>
+            <PostsTab session={session} />
+          </Suspense>
+        }
         sessions={
-          <>
-            <SessionsTable sessions={sessions} failed={failed} />
-            <ActivityTable entries={activity} />
-          </>
+          <Suspense fallback={<PanelSkeleton rows={4} />}>
+            <SessionsTab session={session} />
+          </Suspense>
         }
       />
     </main>
+  );
+}
+
+async function CompanyTab({
+  company,
+}: {
+  company: Awaited<ReturnType<typeof getMyCompany>>;
+}) {
+  return <CompanySettings initial={company} />;
+}
+
+async function PostsTab({ session }: { session: Session }) {
+  const rows = await getJobPostsByCompany(session.user.id);
+  return (
+    <PostsCrm
+      initialRows={rows.map((row) => ({
+        id: row.id,
+        jobTitle: row.jobTitle,
+        companySlug: row.companySlug,
+        archived: row.archived,
+        location: row.location,
+        workMode: row.workMode,
+        estimatedSalary: row.estimatedSalary,
+        createdAt: row.createdAt,
+      }))}
+    />
+  );
+}
+
+async function SessionsTab({ session }: { session: Session }) {
+  const { sessions, failed } = await readSessions(session);
+
+  const activity: ActivityEntry[] = sessions.map((s) => ({
+    id: s.id,
+    label: "Signed in",
+    detail: `${s.title}${s.ip ? ` · ${s.ip}` : ""}`,
+    at: s.seenAt ?? "—",
+  }));
+
+  return (
+    <>
+      <SessionsTable sessions={sessions} failed={failed} />
+      <ActivityTable entries={activity} />
+    </>
+  );
+}
+
+function PanelSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="mt-3 animate-pulse rounded-lg border border-stone-100 bg-stone-50 px-6 py-5" aria-hidden>
+      <div className="h-4 w-32 rounded bg-stone-100" />
+      <div className="mt-4 flex flex-col gap-3">
+        {Array.from({ length: rows }).map((_, i) => (
+          <div key={i} className="h-8 rounded bg-stone-100/80" />
+        ))}
+      </div>
+    </div>
   );
 }

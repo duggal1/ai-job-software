@@ -1,4 +1,4 @@
-import { sql, eq, desc } from "drizzle-orm";
+import { sql, eq, desc, count, max } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { applicants, companies, jobPosts } from "@/lib/db/schema";
 
@@ -18,7 +18,7 @@ function createPreparedQueries() {
       .prepare("job_post_by_id"),
     jobPostsByCompany: db.select().from(jobPosts)
       .where(eq(jobPosts.companyId, sql.placeholder("companyId")))
-      .orderBy(jobPosts.createdAt)
+      .orderBy(desc(jobPosts.createdAt))
       .prepare("job_posts_by_company"),
     jobPostsForCareerPage: db.select({
       id: jobPosts.id,
@@ -32,7 +32,7 @@ function createPreparedQueries() {
       category: jobPosts.category,
       createdAt: jobPosts.createdAt,
     }).from(jobPosts)
-      .where(eq(jobPosts.companyId, sql.placeholder("companyId")))
+      .where(sql`${jobPosts.companyId} = ${sql.placeholder("companyId")} AND ${jobPosts.archived} = false`)
       .orderBy(desc(jobPosts.createdAt))
       .prepare("job_posts_for_career_page"),
     companyForCareerPage: db.select({
@@ -83,6 +83,7 @@ function createPreparedQueries() {
       .prepare("applicants_by_job"),
     anyJob: db.select({ id: jobPosts.id, companySlug: jobPosts.companySlug })
       .from(jobPosts)
+      .where(eq(jobPosts.archived, false))
       .orderBy(desc(jobPosts.createdAt))
       .limit(1)
       .prepare("any_job"),
@@ -104,6 +105,7 @@ function createPreparedQueries() {
       logoUrl: companies.logoUrl,
     }).from(jobPosts)
       .leftJoin(companies, eq(jobPosts.companyId, companies.id))
+      .where(eq(jobPosts.archived, false))
       .orderBy(desc(jobPosts.createdAt))
       .limit(20)
       .prepare("latest_jobs"),
@@ -128,7 +130,7 @@ function createPreparedQueries() {
       logoUrl: companies.logoUrl,
     }).from(jobPosts)
       .leftJoin(companies, eq(jobPosts.companyId, companies.id))
-      .where(sql`(${sql.placeholder("q")} = '' OR ${jobPosts.jobTitle} ILIKE '%' || ${sql.placeholder("q")} || '%' OR ${jobPosts.companyName} ILIKE '%' || ${sql.placeholder("q")} || '%')
+      .where(sql`${jobPosts.archived} = false AND (${sql.placeholder("q")} = '' OR ${jobPosts.jobTitle} ILIKE '%' || ${sql.placeholder("q")} || '%' OR ${jobPosts.companyName} ILIKE '%' || ${sql.placeholder("q")} || '%')
         AND (${sql.placeholder("country")} = '' OR ${jobPosts.location} ILIKE '%, ' || ${sql.placeholder("country")})
         AND (${sql.placeholder("experience")} = '' OR ${jobPosts.yearsOfExperience} = ${sql.placeholder("experience")})
         AND (${sql.placeholder("skill")} = '' OR ${jobPosts.skills} ILIKE '%' || ${sql.placeholder("skill")} || '%')`)
@@ -154,6 +156,19 @@ function createPreparedQueries() {
       .where(eq(jobPosts.companyId, sql.placeholder("companyId")))
       .orderBy(desc(applicants.createdAt))
       .prepare("applicants_by_company"),
+    /**
+     * Realtime watermarks. A single cheap row each, used by the SSE poller to
+     * detect writes made by another server instance. `count` catches rows that
+     * land inside the same millisecond as the previous max.
+     */
+    jobsWatermark: db.select({
+      at: max(jobPosts.createdAt),
+      total: count(),
+    }).from(jobPosts).prepare("jobs_watermark"),
+    applicantsWatermark: db.select({
+      at: max(applicants.createdAt),
+      total: count(),
+    }).from(applicants).prepare("applicants_watermark"),
   };
 }
 

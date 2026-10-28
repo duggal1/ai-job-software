@@ -81,19 +81,10 @@ setIsLoading(true);
         // `signIn.emailOtp` triggers the email-otp plugin's `$sessionSignal`,
         // so every `useSession` hook re-renders with the new session
         // immediately — no stale logged-out navbar.
-        const { error } = await authClient.signIn.emailOtp(
-          {
-            email: email.trim(),
-            otp,
-          },
-          {
-            onSuccess: async () => {
-              // Belt-and-braces: force the session atom to refetch now so the
-              // navbar flips to Dashboard/Applicants before navigation.
-              await authClient.getSession({ query: { disableCookieCache: true } });
-            },
-          },
-        );
+        const { error } = await authClient.signIn.emailOtp({
+          email: email.trim(),
+          otp,
+        });
       if (error) {
         setError(error.message ?? "Wrong code");
         return;

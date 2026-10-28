@@ -1,6 +1,6 @@
 "use server";
 
-import { generateText } from "@/lib/actions/generate-text";
+import { generateJson } from "@/lib/actions/generate-text";
 import { z } from "zod";
 
 export interface NoteInput {
@@ -23,12 +23,7 @@ export interface NoteResult {
 
 const SYSTEM_PROMPT = `You are writing a short note to a startup founder — you ARE the candidate, not a career coach helping them.
 
-Given the candidate's parsed resume data and the job details, generate TWO things and return ONLY valid JSON:
-
-{
-  "noteToFounder": "",
-  "recentProjectUrls": ""
-}
+Given the candidate's parsed resume data and the job details, generate TWO things:
 
 Rules for noteToFounder:
 - Write in FIRST PERSON. You are the candidate. Use "I", "my", "me".
@@ -41,12 +36,26 @@ Rules for noteToFounder:
 - Do not use buzzwords ("synergy", "leverage", "passionate", "results-driven", "proven track record", "game-changer")
 - Do not start with "Dear" or end with "Sincerely" — just the body
 - Do not explain what you're doing ("I'm writing to apply for...", "I'd like to express my interest..."). Just start talking about the work.
-- The best notes sound like: "I've been following [company]'s work in [area], and the [role] immediately caught my attention — it sits right at the intersection of the [challenges] I've been solving and the vision [company] is building."
 
 Rules for recentProjectUrls:
-- If the candidate's LinkedIn URL was found, suggest 1-3 relevant project or portfolio URLs based on the resume content
-- If no LinkedIn URL was found, return an empty string
-- Comma-separated list of URLs`;
+- If the candidate supplied project, portfolio, LinkedIn or GitHub URLs, choose 1-3 relevant ones
+- If none exist, return an empty string
+- Comma-separated list of URLs, nothing else`;
+
+const noteJsonSchema = {
+  type: "object",
+  properties: {
+    noteToFounder: { type: "string" },
+    recentProjectUrls: { type: "string" },
+  },
+  required: ["noteToFounder", "recentProjectUrls"],
+  additionalProperties: false,
+} as const;
+
+const noteSchema = z.object({
+  noteToFounder: z.string().default(""),
+  recentProjectUrls: z.string().default(""),
+});
 
 export async function generateNote(input: NoteInput): Promise<NoteResult> {
   const prompt = [
@@ -61,30 +70,23 @@ export async function generateNote(input: NoteInput): Promise<NoteResult> {
     `Applying for: ${input.jobTitle} at ${input.companyName}`,
   ].join("\n");
 
-  const result = await generateText({
-    system: SYSTEM_PROMPT,
-    prompt,
-    temperature: 0.7,
-    maxTokens: 2000,
-  });
-
-  const cleaned = result.content.replace(/```(?:json)?\s*|\s*```/g, "").trim();
-  let parsedJson: unknown;
   try {
-    parsedJson = JSON.parse(cleaned);
-  } catch {
+    const { data } = await generateJson<unknown>({
+      system: SYSTEM_PROMPT,
+      prompt,
+      temperature: 0.7,
+      reasoningEffort: "medium",
+      maxTokens: 8_000,
+      jsonSchema: {
+        name: "founder_note",
+        description: "A first-person note to the founder plus project links.",
+        schema: noteJsonSchema as unknown as Record<string, unknown>,
+      },
+    });
+    return noteSchema.parse(data);
+  } catch (error) {
+    // A missing note must never block an application.
+    console.warn("[generate-note] failed:", error);
     return { noteToFounder: "", recentProjectUrls: "" };
   }
-
-  const parsed = z.object({
-    noteToFounder: z.string().default(""),
-    recentProjectUrls: z.string().default(""),
-  }).safeParse(parsedJson);
-
-  if (!parsed.success) return { noteToFounder: "", recentProjectUrls: "" };
-
-  return {
-    noteToFounder: parsed.data.noteToFounder,
-    recentProjectUrls: parsed.data.recentProjectUrls,
-  };
 }

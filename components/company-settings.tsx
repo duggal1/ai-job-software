@@ -19,6 +19,10 @@ export type CompanySettingsInitial = {
   name: string;
   domain: string;
   logoUrl: string | null;
+  employeeCount?: string | null;
+  industry?: string | null;
+  talentNeeds?: string | null;
+  onboardedAt?: Date | string | null;
   createdAt?: Date | string;
   openPosts: number;
 } | null;

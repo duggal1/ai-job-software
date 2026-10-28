@@ -1,6 +1,6 @@
 "use client";
 
-import { queryOptions, useQuery } from "@tanstack/react-query";
+import { queryOptions, useSuspenseQuery } from "@tanstack/react-query";
 import type { JobCardData } from "@/components/job-card";
 
 export const jobsKeys = {
@@ -27,8 +27,7 @@ function normalizeJobs(rows: RawJobRow[]): JobCardData[] {
       ...row,
       createdAt:
         row.createdAt instanceof Date ? row.createdAt : new Date(row.createdAt),
-    }))
-    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    }));
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -45,12 +44,14 @@ export function latestJobsOptions(initialData?: JobCardData[]) {
       const rows = await fetchJson<RawJobRow[]>("/api/jobs?limit=20");
       return normalizeJobs(rows);
     },
-    staleTime: 10 * 1000,
+    staleTime: 5 * 1000,
     gcTime: 5 * 60 * 1000,
     // Always revalidate on mount: even if a CDN or prerender serves stale
     // HTML, the feed corrects itself the instant the page loads.
     refetchOnMount: "always",
     refetchOnWindowFocus: true,
+    // SSE drives live updates; this covers a dropped connection.
+    refetchInterval: 30 * 1000,
     ...(initialData ? { initialData } : {}),
   });
 }
@@ -77,17 +78,18 @@ export function filteredJobsOptions(
     gcTime: 5 * 60 * 1000,
     refetchOnMount: "always",
     refetchOnWindowFocus: true,
+    refetchInterval: 30 * 1000,
     ...(initialData ? { initialData } : {}),
   });
 }
 
 export function useLatestJobs(initialData?: JobCardData[]) {
-  return useQuery(latestJobsOptions(initialData));
+  return useSuspenseQuery(latestJobsOptions(initialData));
 }
 
 export function useFilteredJobs(
   filters: JobFilterParams,
   initialData?: JobCardData[],
 ) {
-  return useQuery(filteredJobsOptions(filters, initialData));
+  return useSuspenseQuery(filteredJobsOptions(filters, initialData));
 }

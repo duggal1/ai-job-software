@@ -9,7 +9,7 @@ export async function getCareerUrl(): Promise<string> {
   if (!session) return "/sign-in";
 
   const rows = await getPreparedQueries().jobPostsByCompany.execute({ companyId: session.user.id });
-  const post = rows[0];
+  const post = rows.find((row) => !row.archived) ?? null;
   if (post) return `/company/${post.id}/${post.companySlug}/careers/p`;
 
   return "/job-post/new";

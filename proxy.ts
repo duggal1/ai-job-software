@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
+import { getDb } from "@/lib/db";
+import { companies } from "@/lib/db/schema";
 
 /**
  * Network boundary (Next.js 16 `proxy.ts`, Node.js runtime).
@@ -20,7 +23,38 @@ import { auth } from "@/lib/auth";
  */
 
 const SIGN_IN_PATH = "/sign-in";
-const POST_LOGIN_PATH = "/job-post/new";
+const POST_LOGIN_PATH = "/onboarding";
+const ONBOARDING_PATH = "/onboarding";
+
+/**
+ * Routes that are useless until onboarding is finished. Gating them here (not
+ * only in the page) means the redirect is a real 307 instead of a streamed
+ * client redirect, so there is no flash of the dashboard shell.
+ */
+function needsOnboarding(pathname: string): boolean {
+  return (
+    pathname === "/dashboard" ||
+    pathname.startsWith("/dashboard/") ||
+    pathname === "/job-post" ||
+    pathname.startsWith("/job-post/")
+  );
+}
+
+/** Cached per request; a missing company row means "not onboarded". */
+async function isOnboarded(userId: string): Promise<boolean> {
+  try {
+    const [row] = await getDb()
+      .select({ onboardedAt: companies.onboardedAt })
+      .from(companies)
+      .where(eq(companies.id, userId))
+      .limit(1);
+    return Boolean(row?.onboardedAt);
+  } catch {
+    // Never lock someone out because of a transient DB hiccup; the page-level
+    // guard still runs.
+    return true;
+  }
+}
 
 /**
  * Company-private routes. Checked BEFORE the public `/company/` prefix:
@@ -31,6 +65,9 @@ const POST_LOGIN_PATH = "/job-post/new";
  */
 function isCompanyPrivate(pathname: string): boolean {
   if (pathname === "/dashboard" || pathname.startsWith("/dashboard/")) {
+    return true;
+  }
+  if (pathname === "/onboarding" || pathname.startsWith("/onboarding/")) {
     return true;
   }
   if (pathname.startsWith("/company/applicants")) {
@@ -66,7 +103,10 @@ export default async function proxy(request: NextRequest) {
   if (pathname === SIGN_IN_PATH) {
     const existing = await auth.api.getSession({ headers: request.headers });
     if (existing?.user) {
-      return NextResponse.redirect(new URL(POST_LOGIN_PATH, request.url));
+      const destination = (await isOnboarded(existing.user.id))
+        ? "/dashboard"
+        : POST_LOGIN_PATH;
+      return NextResponse.redirect(new URL(destination, request.url));
     }
     return NextResponse.next();
   }
@@ -75,6 +115,9 @@ export default async function proxy(request: NextRequest) {
   if (isCompanyPrivate(pathname)) {
     const session = await auth.api.getSession({ headers: request.headers });
     if (session?.user) {
+      if (needsOnboarding(pathname) && !(await isOnboarded(session.user.id))) {
+        return NextResponse.redirect(new URL(ONBOARDING_PATH, request.url));
+      }
       return NextResponse.next();
     }
     const loginUrl = new URL(SIGN_IN_PATH, request.url);

@@ -40,6 +40,16 @@ export const auth = betterAuth({
       refreshCache: false,
     },
   },
+  rateLimit: {
+    enabled: true,
+    window: 60,
+    max: 100,
+    customRules: {
+      "/sign-in/email-otp": { window: 60, max: 5 },
+      "/email-otp/send-verification-otp": { window: 60, max: 3 },
+      "/email-otp/verify-email": { window: 60, max: 5 },
+    },
+  },
   user: {
     deleteUser: {
       enabled: true,
@@ -74,6 +84,7 @@ export const auth = betterAuth({
   ],
   plugins: [
     emailOTP({
+      allowedAttempts: 3,
       async sendVerificationOTP({ email, otp, type }) {
         await sendOtpEmail({ email, otp, type });
       },

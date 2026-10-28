@@ -9,6 +9,10 @@ export const companies = pgTable(
     name: text("name").notNull(),
     domain: text("domain").notNull(),
     logoUrl: text("logo_url"),
+    employeeCount: text("employee_count"),
+    industry: text("industry"),
+    talentNeeds: text("talent_needs"),
+    onboardedAt: timestamp("onboarded_at"),
     createdAt: timestamp("created_at").notNull(),
   },
   (t) => [uniqueIndex("companies_slug_unique").on(t.slug)],
@@ -37,11 +41,14 @@ export const jobPosts = pgTable(
     aiBudget: text("ai_budget").notNull().default(""),
     applyMode: text("apply_mode").$type<ApplyMode>().notNull().default("platform"),
     applyUrl: text("apply_url"),
+    archived: boolean("archived").notNull().default(false),
     createdAt: timestamp("created_at").notNull(),
   },
   (t) => [
     index("job_posts_company_id_idx").on(t.companyId),
     index("job_posts_created_at_idx").on(t.createdAt),
+    index("job_posts_company_created_idx").on(t.companyId, t.createdAt),
+    index("job_posts_archived_created_idx").on(t.archived, t.createdAt),
   ],
 );
 
@@ -67,5 +74,9 @@ export const applicants = pgTable(
     resumeUrl: text("resume_url"),
     createdAt: timestamp("created_at").notNull(),
   },
-  (t) => [index("applicants_job_post_id_idx").on(t.jobPostId)],
+  (t) => [
+    index("applicants_job_post_id_idx").on(t.jobPostId),
+    index("applicants_created_at_idx").on(t.createdAt),
+    index("applicants_job_post_created_idx").on(t.jobPostId, t.createdAt),
+  ],
 );

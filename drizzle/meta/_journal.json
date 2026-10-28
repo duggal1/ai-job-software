@@ -36,6 +36,20 @@
       "when": 1791299607400,
       "tag": "0004_mysterious_hannibal_king",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793132346990,
+      "tag": "0005_overrated_reavers",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793134663204,
+      "tag": "0006_slow_quasimodo",
+      "breakpoints": true
     }
   ]
 }

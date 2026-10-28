@@ -1,7 +1,7 @@
 "use server";
 
 import Exa from "exa-js";
-import { generateText } from "@/lib/actions/generate-text";
+import { generateJson } from "@/lib/actions/generate-text";
 import { z } from "zod";
 import { EMPLOYMENT_TYPES, JOB_CATEGORIES, WORK_MODES } from "@/lib/types";
 
@@ -109,23 +109,42 @@ export type AutofillResult = Omit<z.infer<typeof autofillResponseSchema>, "compa
   companyDomain: string;
 };
 
-function parseAutofillResponse(text: string, domain: string): AutofillResult {
-  const cleaned = text.replace(/```(?:json)?\s*|\s*```/g, "").trim();
-  const start = cleaned.indexOf("{");
-  const end = cleaned.lastIndexOf("}");
-  const candidate = start !== -1 && end > start ? cleaned.slice(start, end + 1) : cleaned;
-  let parsedJson: unknown;
-  try {
-    parsedJson = JSON.parse(candidate);
-  } catch {
-    throw new Error("Failed to parse response as JSON");
-  }
-  const parsed = autofillResponseSchema.parse(parsedJson);
-  return {
-    ...parsed,
-    companyDomain: parsed.companyDomain ?? domain,
-  };
-}
+/** Strict-mode schema: every property required, no extra keys. */
+const autofillJsonSchema = {
+  type: "object",
+  properties: {
+    companyName: { type: "string" },
+    companyDomain: { type: "string" },
+    jobTitle: { type: "string" },
+    descriptionMarkdown: { type: "string" },
+    estimatedSalary: { type: "string" },
+    employmentType: { type: "string", enum: [...EMPLOYMENT_TYPES] },
+    workMode: { type: "string", enum: [...WORK_MODES] },
+    yearsOfExperience: {
+      type: "string",
+      enum: ["entry", "junior", "mid", "senior", "staff", "lead"],
+    },
+    category: { type: "string", enum: [...JOB_CATEGORIES] },
+    skills: { type: "string" },
+    aiBudget: { type: "string" },
+    visaSponsorship: { type: "boolean" },
+  },
+  required: [
+    "companyName",
+    "companyDomain",
+    "jobTitle",
+    "descriptionMarkdown",
+    "estimatedSalary",
+    "employmentType",
+    "workMode",
+    "yearsOfExperience",
+    "category",
+    "skills",
+    "aiBudget",
+    "visaSponsorship",
+  ],
+  additionalProperties: false,
+} as const;
 
 export async function autofillJobPost(rawUrl: string, prompt: string): Promise<AutofillResult> {
   const url = normalizeUrl(rawUrl);
@@ -145,12 +164,24 @@ export async function autofillJobPost(rawUrl: string, prompt: string): Promise<A
 }
 
 async function autofillWithModels(userContent: string, domain: string): Promise<AutofillResult> {
-  const result = await generateText({
+  const { data } = await generateJson<unknown>({
     system: SYSTEM_INSTRUCTION,
     prompt: userContent,
-    temperature: 0.3,
-    maxTokens: 8192,
+    // Beam's recommended sampler; medium reasoning is the quality/latency
+    // sweet spot for a full job post.
+    temperature: 0.7,
+    reasoningEffort: "medium",
+    maxTokens: 20_000,
+    jsonSchema: {
+      name: "job_post_autofill",
+      description: "A complete, ready-to-publish job post.",
+      schema: autofillJsonSchema as unknown as Record<string, unknown>,
+    },
   });
 
-  return parseAutofillResponse(result.content, domain);
+  const parsed = autofillResponseSchema.parse(data);
+  return {
+    ...parsed,
+    companyDomain: parsed.companyDomain || domain,
+  };
 }

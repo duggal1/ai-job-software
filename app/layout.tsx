@@ -1,4 +1,6 @@
 import { QueryProvider } from "@/components/query-provider";
+import { RealtimeProvider } from "@/components/realtime-provider";
+import { ToastProvider } from "@/components/toast-provider";
 import { Navbar } from "@/components/navbar";
 import { siteMetadata } from "@/lib/metadata";
 import { Geist, Geist_Mono, Figtree } from "next/font/google";
@@ -31,8 +33,11 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <QueryProvider>
-          <Navbar />
-          {children}
+          <ToastProvider>
+            <RealtimeProvider />
+            <Navbar />
+            {children}
+          </ToastProvider>
         </QueryProvider>
       </body>
     </html>

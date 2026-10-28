@@ -1,7 +1,9 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { getLatestJobs } from "@/lib/actions/get-latest-jobs";
 import { LatestJobsList } from "@/components/latest-jobs-list";
-import { SearchInput } from "@/components/search-input";
+import { JobsListSkeleton } from "@/components/jobs-list-skeleton";
+import { SearchForm } from "@/components/search-form";
 
 /**
  * NEVER statically prerender this page. A static `/` bakes in whatever the
@@ -27,10 +29,6 @@ const POPULAR_FILTERS: PopularFilter[] = [
 ];
 
 export default async function Page() {
-  // SSR first paint; TanStack Query takes over on the client with this as
-  // `initialData`, then stays fresh (10s staleTime + invalidate on post).
-  const initialJobs = await getLatestJobs();
-
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col px-6 pb-24 pt-[10vh]">
       <h1 className="max-w-2xl text-4xl font-normal leading-[1.05] tracking-tighter text-stone-900 antialiased sm:text-5xl">
@@ -40,15 +38,7 @@ export default async function Page() {
         The agentic AI job platform — infra, evals, and the people who ship them.
       </p>
 
-      <form action="/jobs" method="get" className="mt-10 flex items-center gap-2">
-        <SearchInput placeholder="Search any role, skill, or company…" />
-        <button
-          type="submit"
-          className="h-10 w-fit shrink-0 cursor-pointer rounded-lg bg-stone-900 px-3 py-0.5 text-[13px] font-normal text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.15),inset_0_-1px_0_rgba(0,0,0,0.12)] hover:bg-stone-950"
-        >
-          Search
-        </button>
-      </form>
+      <SearchForm />
 
       <div className="mt-5 flex flex-wrap gap-2">
         {POPULAR_FILTERS.map((f) => (
@@ -74,7 +64,26 @@ export default async function Page() {
           View all
         </Link>
       </div>
-      <LatestJobsList initialData={initialJobs} />
+      <Suspense fallback={<LatestJobsFallback />}>
+        <LatestJobsFeed />
+      </Suspense>
     </main>
+  );
+}
+
+/**
+ * Streams the DB-backed list behind a Suspense boundary. The hero, search and
+ * filter chips paint instantly; jobs arrive as soon as Postgres answers.
+ */
+async function LatestJobsFeed() {
+  const initialJobs = await getLatestJobs();
+  return <LatestJobsList initialData={initialJobs} />;
+}
+
+function LatestJobsFallback() {
+  return (
+    <div className="mt-5">
+      <JobsListSkeleton />
+    </div>
   );
 }
