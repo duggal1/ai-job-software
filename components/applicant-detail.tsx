@@ -134,12 +134,6 @@ export function ApplicantDetail({
           variant="full"
           label="Contact this user"
         />
-        <a
-          href={`mailto:${applicant.email}`}
-          className="cursor-pointer rounded-lg bg-stone-100 px-5 py-1.5 text-[14px] font-normal text-stone-700 transition-colors hover:bg-stone-200/70"
-        >
-          Email
-        </a>
       </div>
     </>
   );

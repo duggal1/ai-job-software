@@ -109,7 +109,7 @@ export function ApplicantsBoard({
             <div className="mt-0.5 flex flex-wrap items-center gap-3">
               <Link
                 href={`/company/applicants/${slugify(applicant.fullName)}/${applicant.id}`}
-                className="w-fit cursor-pointer text-[12px] text-blue-600 underline decoration-blue-600 decoration-dotted underline-offset-4 transition-colors hover:text-blue-700"
+                className="w-fit cursor-pointer text-[12px] text-stone-700 underline decoration-stone-300 decoration-dotted underline-offset-4 transition-colors hover:text-stone-900"
               >
                 Read all
               </Link>

@@ -13,10 +13,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
-import { Textarea } from "@/components/ui/textarea";
 import { MarkdownEditor } from "@/components/markdown-editor";
+import { AiEditComposer } from "@/components/ai-edit-composer";
 import {
-  aiEditJobPost,
   deleteJobPost,
   setPostArchived,
   updateJobPost,
@@ -80,47 +79,13 @@ export function PostEditor({ post }: { post: PostEditorData }) {
   const [applyUrl, setApplyUrl] = useState(post.applyUrl);
   const [archived, setArchived] = useState(post.archived);
 
-  const [instruction, setInstruction] = useState("");
   const [error, setError] = useState("");
-  const [note, setNote] = useState("");
-  const [isAiPending, startAi] = useTransition();
   const [isSaving, startSave] = useTransition();
   const [isStatusPending, startStatus] = useTransition();
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  function askAi() {
-    if (!instruction.trim()) return;
-    setError("");
-    setNote("");
-    startAi(async () => {
-      try {
-        const draft = await aiEditJobPost({
-          postId: post.id,
-          instruction: instruction.trim(),
-          current: {
-            jobTitle,
-            descriptionMarkdown,
-            estimatedSalary,
-            skills,
-            aiBudget,
-          },
-        });
-        setJobTitle(draft.jobTitle);
-        setDescriptionMarkdown(draft.descriptionMarkdown);
-        setEstimatedSalary(draft.estimatedSalary);
-        setSkills(draft.skills);
-        setAiBudget(draft.aiBudget);
-        setInstruction("");
-        setNote("AI updated the draft. Review it, then save.");
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "AI could not edit this post.");
-      }
-    });
-  }
-
   function save() {
     setError("");
-    setNote("");
     startSave(async () => {
       try {
         await updateJobPost({
@@ -182,7 +147,7 @@ export function PostEditor({ post }: { post: PostEditorData }) {
             Edit post
           </h1>
           <p className="mt-1 text-[13px] text-stone-500">
-            {post.jobTitle} · /dashboard/post/edit/{slugify(jobTitle)}
+            {post.jobTitle} · /dashboard/post/edit/{slugify(post.jobTitle)}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -212,48 +177,23 @@ export function PostEditor({ post }: { post: PostEditorData }) {
         </div>
       </div>
 
-      <section
-        aria-label="AI edit"
-        className="rounded-lg border border-stone-100 bg-stone-50 px-5 py-4"
-      >
-        <h2 className="text-[14px] font-normal text-stone-900">Ask AI to edit</h2>
-        <p className="mt-1 text-[12px] leading-relaxed text-stone-400">
-          Say what should change. AI returns a full draft for you to review —
-          nothing is saved until you press Save.
-        </p>
-        <Textarea
-          value={instruction}
-          onChange={(event) => setInstruction(event.target.value)}
-          placeholder="e.g. Make the opening sharper and add a short note about the on-call rotation."
-          className="mt-3 min-h-20 rounded-lg border-stone-200/60 bg-white text-[13px] leading-relaxed text-stone-800 shadow-none focus-visible:ring-1 focus-visible:ring-stone-300"
-        />
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={askAi}
-            disabled={isAiPending || !instruction.trim()}
-            className={darkChip}
-          >
-            {isAiPending ? <Spinner className="size-3.5" /> : null}
-            {isAiPending ? "Thinking…" : "Ask AI"}
-          </button>
-          {[
-            "Make it shorter",
-            "More specific, less generic",
-            "Tighten the responsibilities",
-          ].map((hint) => (
-            <button
-              key={hint}
-              type="button"
-              onClick={() => setInstruction(hint)}
-              className="cursor-pointer rounded-md bg-white px-2 py-1 text-[11px] text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-700"
-            >
-              {hint}
-            </button>
-          ))}
-        </div>
-        {note && <p className="mt-3 text-[12px] text-emerald-700">{note}</p>}
-      </section>
+      <AiEditComposer
+        postId={post.id}
+        current={{
+          jobTitle,
+          descriptionMarkdown,
+          estimatedSalary,
+          skills,
+          aiBudget,
+        }}
+        onDraft={(draft) => {
+          setJobTitle(draft.jobTitle);
+          setDescriptionMarkdown(draft.descriptionMarkdown);
+          setEstimatedSalary(draft.estimatedSalary);
+          setSkills(draft.skills);
+          setAiBudget(draft.aiBudget);
+        }}
+      />
 
       <div className="flex flex-col gap-8">
         <div className="flex flex-col gap-1.5">
